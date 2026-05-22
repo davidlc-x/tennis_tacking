@@ -300,6 +300,11 @@ h2 {
   gap: 12px;
 }
 
+.header-actions {
+  display: inline-flex;
+  gap: 8px;
+}
+
 .icon-button {
   display: inline-grid;
   width: 46px;
@@ -454,6 +459,77 @@ input[type="range"] {
   color: var(--lime);
   font-size: 1.25rem;
   font-weight: 950;
+}
+
+.replay-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 20;
+  display: grid;
+  place-items: center;
+  padding: 18px;
+  background: rgba(3, 5, 6, 0.76);
+  backdrop-filter: blur(16px);
+}
+
+.replay-modal[hidden] {
+  display: none;
+}
+
+.replay-dialog {
+  display: grid;
+  width: min(92vw, 540px);
+  max-height: min(92vh, 820px);
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  gap: 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 14px;
+  background: #121717;
+  box-shadow: var(--shadow);
+}
+
+.replay-header,
+.replay-controls {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+#replayCanvas {
+  width: auto;
+  max-width: 100%;
+  height: 100%;
+  min-height: 0;
+  justify-self: center;
+  aspect-ratio: 560 / 860;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 8px;
+  background: #153328;
+}
+
+.replay-controls button {
+  min-height: 42px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 0 14px;
+  background: rgba(244, 242, 234, 0.1);
+  color: var(--text);
+  font-weight: 900;
+}
+
+.replay-controls .primary {
+  background: var(--lime);
+  color: #19200d;
+}
+
+#replayMeta {
+  min-width: 0;
+  color: var(--muted);
+  font-size: 0.82rem;
+  font-weight: 800;
+  text-align: right;
 }
 
 @media (max-width: 980px) {

@@ -28,6 +28,8 @@ const state = {
   tracks: [],
   courtTrail: [],
   shots: [],
+  rallies: [],
+  activeRally: null,
   rallyCount: 0,
   shotInRally: 0,
   lastShotTime: 0,
@@ -66,6 +68,14 @@ const state = {
       lastSpeedError: 0,
     },
   },
+  replay: {
+    rally: null,
+    playing: false,
+    startedAt: 0,
+    pausedAt: 0,
+    durationMs: 0,
+    frameRequest: 0,
+  },
   videoRect: { x: 0, y: 0, width: 0, height: 0 },
   stats: {
     peak: 0,
@@ -98,6 +108,14 @@ const els = {
   rallyCount: $("rallyCount"),
   shotList: $("shotList"),
   fpsBadge: $("fpsBadge"),
+  replayModal: $("replayModal"),
+  replayCanvas: $("replayCanvas"),
+  replayTitle: $("replayTitle"),
+  replayMeta: $("replayMeta"),
+  replayBtn: $("replayBtn"),
+  replayPlayBtn: $("replayPlayBtn"),
+  replayRestartBtn: $("replayRestartBtn"),
+  closeReplayBtn: $("closeReplayBtn"),
   startCameraBtn: $("startCameraBtn"),
   recordBtn: $("recordBtn"),
   autoCalibrateBtn: $("autoCalibrateBtn"),
@@ -116,6 +134,7 @@ const els = {
 const overlayCtx = els.overlay.getContext("2d", { alpha: true });
 const processorCtx = els.processor.getContext("2d", { willReadFrequently: true });
 const courtCtx = els.courtMap.getContext("2d");
+const replayCtx = els.replayCanvas.getContext("2d");
 state.model.context = state.model.canvas.getContext("2d", { willReadFrequently: true });
 state.sim.context = state.sim.canvas.getContext("2d");
 
@@ -676,9 +695,12 @@ function scoreCourtCandidate(points, lines, width, height) {
 }
 
 function resetSession() {
+  closeReplay();
   state.tracks = [];
   state.courtTrail = [];
   state.shots = [];
+  state.rallies = [];
+  state.activeRally = null;
   state.rallyCount = 0;
   state.shotInRally = 0;
   state.lastShotTime = 0;
@@ -688,6 +710,7 @@ function resetSession() {
   state.stats = { peak: 0, serve: 0, return: 0, current: 0, confidence: 0 };
   resetSimulationMetrics();
   renderStats();
+  updateReplayButton();
   drawOverlay();
   drawCourtMap();
 }
@@ -1446,8 +1469,40 @@ function acceptDetection(detection) {
   state.stats.current = speedKmh || state.stats.current * 0.9;
   state.stats.peak = Math.max(state.stats.peak, speedKmh);
   state.stats.confidence = state.stats.confidence * 0.82 + detection.score * 0.18;
+  appendRallySample(sample);
   recordSimulationAccuracy(sample);
   maybeRegisterShot(sample);
+}
+
+function appendRallySample(sample) {
+  const lastSampleAt = state.activeRally?.lastSampleAt ?? 0;
+  const gap = sample.timestamp - lastSampleAt;
+  if (!state.activeRally || gap > 5) {
+    const nextId = (state.rallies.at(-1)?.id ?? 0) + 1;
+    state.activeRally = {
+      id: nextId,
+      startedAt: sample.timestamp,
+      lastSampleAt: sample.timestamp,
+      samples: [],
+      shots: [],
+    };
+    state.rallies.push(state.activeRally);
+    if (state.rallies.length > 24) state.rallies.shift();
+  }
+
+  const rally = state.activeRally;
+  sample.rally = rally.id;
+  rally.lastSampleAt = sample.timestamp;
+  rally.samples.push({
+    court: { ...sample.court },
+    timestamp: sample.timestamp,
+    speedKmh: sample.speedKmh,
+    confidence: sample.confidence,
+    source: sample.source,
+  });
+  if (rally.samples.length > 900) rally.samples.shift();
+  state.rallyCount = Math.max(state.rallyCount, rally.id);
+  updateReplayButton();
 }
 
 function recordSimulationAccuracy(sample) {
@@ -1492,24 +1547,29 @@ function maybeRegisterShot(sample) {
   const minSpeed = Number(els.minShotSpeed.value) || 35;
   if (sample.speedKmh < minSpeed) return;
   const lastShotGap = sample.timestamp - state.lastShotTime;
-  if (lastShotGap < 0.55) {
+  if (state.lastShotTime && lastShotGap < 0.55) {
     const lastShot = state.shots.at(-1);
     if (lastShot && sample.speedKmh > lastShot.speedKmh) {
       lastShot.speedKmh = sample.speedKmh;
       lastShot.court = sample.court;
+      lastShot.location = describeCourtLocation(sample.court);
+      const rallyShot = state.activeRally?.shots.at(-1);
+      if (rallyShot?.id === lastShot.id) {
+        rallyShot.speedKmh = lastShot.speedKmh;
+        rallyShot.court = lastShot.court;
+        rallyShot.location = lastShot.location;
+      }
       renderShotList();
     }
     return;
   }
 
-  if (lastShotGap > 5 || state.shots.length === 0) {
-    state.rallyCount += 1;
-    state.shotInRally = 1;
-  } else {
-    state.shotInRally += 1;
-  }
+  const activeRally = state.activeRally;
+  const shotIndex = activeRally ? activeRally.shots.length + 1 : state.shotInRally + 1;
+  state.shotInRally = shotIndex;
+  state.rallyCount = Math.max(state.rallyCount, sample.rally ?? state.rallyCount);
 
-  const kind = classifyShot(sample.speedKmh);
+  const kind = classifyShot(sample.speedKmh, shotIndex);
   const shot = {
     id: crypto.randomUUID?.() ?? `${Date.now()}-${state.shots.length}`,
     kind,
@@ -1518,21 +1578,22 @@ function maybeRegisterShot(sample) {
     court: sample.court,
     location: describeCourtLocation(sample.court),
     confidence: sample.confidence,
-    rally: state.rallyCount,
-    index: state.shotInRally,
+    rally: sample.rally ?? state.rallyCount,
+    index: shotIndex,
   };
   state.shots.unshift(shot);
   state.shots = state.shots.slice(0, 80);
   state.lastShotTime = sample.timestamp;
+  activeRally?.shots.push(shot);
 
   if (kind === "Serve") state.stats.serve = Math.max(state.stats.serve, shot.speedKmh);
   if (kind === "Return") state.stats.return = Math.max(state.stats.return, shot.speedKmh);
   renderShotList();
 }
 
-function classifyShot(speedKmh) {
-  if (state.shotInRally === 1 || speedKmh >= 135) return "Serve";
-  if (state.shotInRally === 2) return "Return";
+function classifyShot(speedKmh, shotIndex = state.shotInRally) {
+  if (shotIndex === 1 || speedKmh >= 135) return "Serve";
+  if (shotIndex === 2) return "Return";
   return "Rally";
 }
 
@@ -1613,6 +1674,243 @@ function renderShotList() {
     els.shotList.append(li);
   }
   renderStats();
+}
+
+function updateReplayButton() {
+  const hasReplay = state.rallies.some((rally) => rally.samples.length > 6);
+  els.replayBtn.disabled = !hasReplay;
+}
+
+function openReplay() {
+  const source = [...state.rallies].reverse().find((rally) => rally.samples.length > 6);
+  if (!source) return;
+
+  const samples = source.samples.map((sample) => ({
+    ...sample,
+    court: { ...sample.court },
+  }));
+  const shots = source.shots.map((shot) => ({
+    ...shot,
+    court: { ...shot.court },
+  }));
+  const first = samples[0];
+  const last = samples.at(-1);
+
+  state.replay.rally = {
+    id: source.id,
+    samples,
+    shots,
+    startedAt: first.timestamp,
+    endedAt: last.timestamp,
+  };
+  state.replay.durationMs = Math.max(1200, (last.timestamp - first.timestamp) * 1000);
+  state.replay.startedAt = performance.now();
+  state.replay.pausedAt = 0;
+  state.replay.playing = true;
+
+  els.replayTitle.textContent = `Point ${source.id}`;
+  els.replayPlayBtn.textContent = "Pause";
+  els.replayModal.hidden = false;
+  drawReplayFrame();
+}
+
+function closeReplay() {
+  cancelAnimationFrame(state.replay.frameRequest);
+  state.replay.frameRequest = 0;
+  state.replay.playing = false;
+  state.replay.rally = null;
+  if (els.replayModal) els.replayModal.hidden = true;
+}
+
+function toggleReplayPlayback() {
+  if (!state.replay.rally) return;
+
+  if (state.replay.playing) {
+    state.replay.pausedAt = replayElapsedMs();
+    state.replay.playing = false;
+    els.replayPlayBtn.textContent = "Play";
+    cancelAnimationFrame(state.replay.frameRequest);
+    drawReplayFrame();
+    return;
+  }
+
+  state.replay.startedAt = performance.now() - state.replay.pausedAt;
+  state.replay.playing = true;
+  els.replayPlayBtn.textContent = "Pause";
+  drawReplayFrame();
+}
+
+function restartReplay() {
+  if (!state.replay.rally) return;
+  state.replay.startedAt = performance.now();
+  state.replay.pausedAt = 0;
+  state.replay.playing = true;
+  els.replayPlayBtn.textContent = "Pause";
+  drawReplayFrame();
+}
+
+function replayElapsedMs() {
+  if (!state.replay.rally) return 0;
+  if (!state.replay.playing) return state.replay.pausedAt;
+  return clamp(performance.now() - state.replay.startedAt, 0, state.replay.durationMs);
+}
+
+function drawReplayFrame() {
+  cancelAnimationFrame(state.replay.frameRequest);
+  const rally = state.replay.rally;
+  if (!rally) return;
+
+  const canvas = els.replayCanvas;
+  const ctx = replayCtx;
+  const elapsedMs = replayElapsedMs();
+  const progress = state.replay.durationMs ? elapsedMs / state.replay.durationMs : 0;
+  const replayTime = rally.startedAt + elapsedMs / 1000;
+  const visible = rally.samples.filter((sample) => sample.timestamp <= replayTime);
+  const current = sampleAtReplayTime(rally.samples, replayTime);
+  const court = courtSize();
+  const transform = replayCourtTransform(canvas.width, canvas.height, court);
+
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  drawReplayCourt(ctx, transform, court);
+  drawReplayTrail(ctx, transform, visible);
+  drawReplayShots(ctx, transform, rally.shots.filter((shot) => shot.timestamp <= replayTime));
+
+  if (current) {
+    const point = transform(current.court);
+    ctx.fillStyle = "#d7fa5f";
+    ctx.strokeStyle = "rgba(18, 20, 23, 0.82)";
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.arc(point.x, point.y, 8, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+  }
+
+  const speed = current?.speedKmh ? `${Math.round(convertSpeed(current.speedKmh))} ${preferredUnitLabel()}` : "--";
+  const shots = rally.shots.length;
+  els.replayMeta.textContent = `${Math.round(progress * 100)}% | ${speed} | ${shots} shots`;
+
+  if (state.replay.playing && elapsedMs < state.replay.durationMs) {
+    state.replay.frameRequest = requestAnimationFrame(drawReplayFrame);
+  } else if (state.replay.playing) {
+    state.replay.playing = false;
+    state.replay.pausedAt = state.replay.durationMs;
+    els.replayPlayBtn.textContent = "Play";
+  }
+}
+
+function sampleAtReplayTime(samples, time) {
+  if (!samples.length) return null;
+  if (time <= samples[0].timestamp) return samples[0];
+  if (time >= samples.at(-1).timestamp) return samples.at(-1);
+
+  for (let index = 1; index < samples.length; index += 1) {
+    const next = samples[index];
+    if (next.timestamp < time) continue;
+    const previous = samples[index - 1];
+    const span = next.timestamp - previous.timestamp || 1;
+    const amount = clamp((time - previous.timestamp) / span, 0, 1);
+    return {
+      timestamp: time,
+      speedKmh: previous.speedKmh + (next.speedKmh - previous.speedKmh) * amount,
+      court: {
+        x: previous.court.x + (next.court.x - previous.court.x) * amount,
+        y: previous.court.y + (next.court.y - previous.court.y) * amount,
+      },
+    };
+  }
+
+  return samples.at(-1);
+}
+
+function replayCourtTransform(width, height, court) {
+  const pad = 42;
+  const scale = Math.min((width - pad * 2) / court.width, (height - pad * 2) / court.length);
+  const courtW = court.width * scale;
+  const courtH = court.length * scale;
+  const ox = (width - courtW) / 2;
+  const oy = (height - courtH) / 2;
+  return (point) => ({
+    x: ox + point.x * scale,
+    y: oy + point.y * scale,
+  });
+}
+
+function drawReplayCourt(ctx, transform, court) {
+  const tl = transform({ x: 0, y: 0 });
+  const br = transform({ x: court.width, y: court.length });
+  const width = br.x - tl.x;
+  const height = br.y - tl.y;
+
+  ctx.fillStyle = "#153328";
+  ctx.fillRect(0, 0, ctx.canvas.width, ctx.canvas.height);
+  ctx.fillStyle = "#29745d";
+  ctx.fillRect(tl.x, tl.y, width, height);
+  ctx.strokeStyle = "rgba(244, 242, 234, 0.92)";
+  ctx.lineWidth = 3;
+  ctx.strokeRect(tl.x, tl.y, width, height);
+
+  const line = (a, b) => {
+    const pa = transform(a);
+    const pb = transform(b);
+    ctx.beginPath();
+    ctx.moveTo(pa.x, pa.y);
+    ctx.lineTo(pb.x, pb.y);
+    ctx.stroke();
+  };
+
+  const netY = court.length / 2;
+  const service = 6.4;
+  line({ x: 0, y: netY }, { x: court.width, y: netY });
+  line({ x: 0, y: netY - service }, { x: court.width, y: netY - service });
+  line({ x: 0, y: netY + service }, { x: court.width, y: netY + service });
+  line({ x: court.width / 2, y: netY - service }, { x: court.width / 2, y: netY + service });
+
+  if (court.width > COURTS.singles.width) {
+    const alley = (court.width - COURTS.singles.width) / 2;
+    line({ x: alley, y: 0 }, { x: alley, y: court.length });
+    line({ x: court.width - alley, y: 0 }, { x: court.width - alley, y: court.length });
+  }
+}
+
+function drawReplayTrail(ctx, transform, samples) {
+  if (samples.length < 2) return;
+  ctx.save();
+  ctx.lineWidth = 4;
+  ctx.lineCap = "round";
+  ctx.lineJoin = "round";
+
+  for (let index = 1; index < samples.length; index += 1) {
+    const a = transform(samples[index - 1].court);
+    const b = transform(samples[index].court);
+    const alpha = index / samples.length;
+    ctx.strokeStyle = `rgba(116, 185, 255, ${0.2 + alpha * 0.7})`;
+    ctx.beginPath();
+    ctx.moveTo(a.x, a.y);
+    ctx.lineTo(b.x, b.y);
+    ctx.stroke();
+  }
+
+  ctx.restore();
+}
+
+function drawReplayShots(ctx, transform, shots) {
+  ctx.save();
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.font = "900 12px system-ui";
+
+  shots.forEach((shot) => {
+    const point = transform(shot.court);
+    ctx.fillStyle = shot.kind === "Serve" ? "#ffbf55" : "#d7fa5f";
+    ctx.beginPath();
+    ctx.arc(point.x, point.y, 11, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = "#121417";
+    ctx.fillText(String(shot.index), point.x, point.y);
+  });
+
+  ctx.restore();
 }
 
 function drawOverlay() {
@@ -1831,6 +2129,23 @@ function exportSession() {
       court: shot.court,
       location: shot.location,
     })),
+    rallies: state.rallies.map((rally) => ({
+      id: rally.id,
+      samples: rally.samples.map((sample) => ({
+        t: sample.timestamp - rally.startedAt,
+        court: sample.court,
+        speed: convertSpeed(sample.speedKmh),
+        confidence: sample.confidence,
+        source: sample.source,
+      })),
+      shots: rally.shots.map((shot) => ({
+        kind: shot.kind,
+        speed: convertSpeed(shot.speedKmh),
+        index: shot.index,
+        location: shot.location,
+        court: shot.court,
+      })),
+    })),
   };
   const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
   const url = URL.createObjectURL(blob);
@@ -2031,6 +2346,16 @@ els.calibrateBtn.addEventListener("click", beginCalibration);
 els.simBtn.addEventListener("click", startSimulation);
 els.resetBtn.addEventListener("click", resetSession);
 els.exportBtn.addEventListener("click", exportSession);
+els.replayBtn.addEventListener("click", openReplay);
+els.replayPlayBtn.addEventListener("click", toggleReplayPlayback);
+els.replayRestartBtn.addEventListener("click", restartReplay);
+els.closeReplayBtn.addEventListener("click", closeReplay);
+els.replayModal.addEventListener("click", (event) => {
+  if (event.target === els.replayModal) closeReplay();
+});
+window.addEventListener("keydown", (event) => {
+  if (event.key === "Escape" && !els.replayModal.hidden) closeReplay();
+});
 els.overlay.addEventListener("pointerdown", handleCalibrationTap);
 els.courtMode.addEventListener("change", () => {
   if (state.calibrationPoints.length === 4) finishCalibration();
@@ -2063,4 +2388,5 @@ if ("serviceWorker" in navigator) {
 setAppHeight();
 setDetectorStatus(window.ort ? "Model idle" : "Model unavailable", window.ort ? "muted" : "warn");
 renderStats();
+updateReplayButton();
 drawCourtMap();

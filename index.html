@@ -82,9 +82,14 @@
             <p class="eyebrow">Live session</p>
             <h2 id="sessionTitle">New match</h2>
           </div>
-          <button id="exportBtn" class="icon-button" type="button" title="Export session">
-            <span>v</span>
-          </button>
+          <div class="header-actions">
+            <button id="replayBtn" class="icon-button" type="button" title="Replay last point" disabled>
+              <span>R</span>
+            </button>
+            <button id="exportBtn" class="icon-button" type="button" title="Export session">
+              <span>v</span>
+            </button>
+          </div>
         </div>
 
         <div class="score-grid">
@@ -161,6 +166,26 @@
         </section>
       </aside>
     </main>
+
+    <div id="replayModal" class="replay-modal" hidden>
+      <section class="replay-dialog" aria-label="Point replay">
+        <div class="replay-header">
+          <div>
+            <p class="eyebrow">Replay</p>
+            <h2 id="replayTitle">Last point</h2>
+          </div>
+          <button id="closeReplayBtn" class="icon-button" type="button" title="Close replay">
+            <span>x</span>
+          </button>
+        </div>
+        <canvas id="replayCanvas" width="560" height="860"></canvas>
+        <div class="replay-controls">
+          <button id="replayPlayBtn" class="primary" type="button">Pause</button>
+          <button id="replayRestartBtn" type="button">Restart</button>
+          <span id="replayMeta">No point loaded</span>
+        </div>
+      </section>
+    </div>
 
     <canvas id="processor" hidden></canvas>
     <script src="./app.js" type="module"></script>

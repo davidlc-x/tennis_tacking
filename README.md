@@ -13,6 +13,7 @@ CourtSpeed is a phone-friendly web app for recording tennis from the back of the
 - Segments likely serve, return, and rally shots.
 - Labels each shot with an approximate court location.
 - Includes a virtual benchmark feed with known ground-truth ball position and speed.
+- Replays the latest point as an animated overhead rally with ball trail and shot markers.
 - Shows an overhead court trail and exports shot data as JSON.
 - Installs as a PWA on supported mobile browsers.
 
@@ -57,6 +58,10 @@ Auto calibration works best when:
 ## Virtual benchmark
 
 Tap Sim to run a generated court feed through the same tracking pipeline. The simulator auto-calibrates the synthetic court, starts tracking, and reports mean position error and mean speed error in the stats panel. It uses a clean generated feed, so it is mainly for testing geometry, speed math, smoothing, and app regressions. It does not prove real-world camera accuracy, lighting robustness, or model performance against actual match footage.
+
+## Point replay
+
+The app stores each rally as projected court-coordinate samples. Tap Replay to play the latest point back as an animated overhead court view with the ball trail, shot numbers, current replay speed, and shot count. Replay uses the same homography output as the live tracker, so calibration quality directly affects replay quality.
 
 ## Accuracy notes
 
