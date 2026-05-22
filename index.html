@@ -1,0 +1,168 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="theme-color" content="#121417" />
+    <title>CourtSpeed</title>
+    <link rel="manifest" href="./manifest.webmanifest" />
+    <link rel="stylesheet" href="./styles.css" />
+    <script src="./vendor/ort.min.js"></script>
+  </head>
+  <body>
+    <main class="app-shell">
+      <section class="camera-stage" aria-label="Camera tracking view">
+        <video id="camera" playsinline muted></video>
+        <canvas id="overlay"></canvas>
+
+        <div class="topbar">
+          <div>
+            <p class="eyebrow">CourtSpeed</p>
+            <h1>Match Tracker</h1>
+          </div>
+          <div class="status-stack">
+            <span id="cameraStatus" class="status-pill muted">Camera idle</span>
+            <span id="calibrationStatus" class="status-pill warn">Needs calibration</span>
+          </div>
+        </div>
+
+        <div id="calibrationGuide" class="calibration-guide" hidden>
+          <span id="calibrationStep">Tap near-left corner</span>
+        </div>
+
+        <div class="metric-strip" aria-label="Primary speed stats">
+          <article>
+            <span>Serve</span>
+            <strong id="serveSpeed">--</strong>
+            <small>km/h</small>
+          </article>
+          <article>
+            <span>Return</span>
+            <strong id="returnSpeed">--</strong>
+            <small>km/h</small>
+          </article>
+          <article>
+            <span>Current</span>
+            <strong id="currentSpeed">--</strong>
+            <small>km/h</small>
+          </article>
+        </div>
+
+        <div class="toolbar" aria-label="Tracking controls">
+          <button id="startCameraBtn" class="primary" type="button">
+            <span class="icon">&gt;</span>
+            <span>Camera</span>
+          </button>
+          <button id="recordBtn" type="button" disabled>
+            <span class="icon">o</span>
+            <span>Track</span>
+          </button>
+          <button id="autoCalibrateBtn" type="button" disabled>
+            <span class="icon">A</span>
+            <span>Auto</span>
+          </button>
+          <button id="calibrateBtn" type="button" disabled>
+            <span class="icon">+</span>
+            <span>Manual</span>
+          </button>
+          <button id="simBtn" type="button">
+            <span class="icon">S</span>
+            <span>Sim</span>
+          </button>
+          <button id="resetBtn" type="button">
+            <span class="icon">r</span>
+            <span>Reset</span>
+          </button>
+        </div>
+      </section>
+
+      <aside class="stats-panel" aria-label="Match statistics">
+        <div class="panel-header">
+          <div>
+            <p class="eyebrow">Live session</p>
+            <h2 id="sessionTitle">New match</h2>
+          </div>
+          <button id="exportBtn" class="icon-button" type="button" title="Export session">
+            <span>v</span>
+          </button>
+        </div>
+
+        <div class="score-grid">
+          <article>
+            <span>Shots</span>
+            <strong id="shotCount">0</strong>
+          </article>
+          <article>
+            <span>Rallies</span>
+            <strong id="rallyCount">0</strong>
+          </article>
+          <article>
+            <span>Peak</span>
+            <strong id="peakSpeed">--</strong>
+          </article>
+          <article>
+            <span>Confidence</span>
+            <strong id="confidence">--</strong>
+          </article>
+          <article>
+            <span>Pos error</span>
+            <strong id="positionError">--</strong>
+          </article>
+          <article>
+            <span>Speed error</span>
+            <strong id="speedError">--</strong>
+          </article>
+        </div>
+
+        <section class="controls-card" aria-label="Tracking settings">
+          <div class="field">
+            <label for="courtMode">Court</label>
+            <select id="courtMode">
+              <option value="singles">Singles</option>
+              <option value="doubles">Doubles</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="units">Units</label>
+            <select id="units">
+              <option value="kmh">km/h</option>
+              <option value="mph">mph</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="detectorMode">Detector</label>
+            <select id="detectorMode">
+              <option value="hybrid">Hybrid model</option>
+              <option value="model">Model only</option>
+              <option value="color">Color only</option>
+            </select>
+            <span id="detectorStatus" class="field-note">Model idle</span>
+          </div>
+          <div class="field">
+            <label for="sensitivity">Ball filter</label>
+            <input id="sensitivity" type="range" min="0" max="100" value="54" />
+          </div>
+          <div class="field">
+            <label for="minShotSpeed">Shot floor</label>
+            <input id="minShotSpeed" type="number" min="10" max="120" step="5" value="35" />
+          </div>
+        </section>
+
+        <section class="court-card" aria-label="Court map">
+          <canvas id="courtMap" width="320" height="520"></canvas>
+        </section>
+
+        <section class="shot-list-card" aria-label="Detected shots">
+          <div class="list-header">
+            <h2>Shots</h2>
+            <span id="fpsBadge">-- fps</span>
+          </div>
+          <ol id="shotList" class="shot-list"></ol>
+        </section>
+      </aside>
+    </main>
+
+    <canvas id="processor" hidden></canvas>
+    <script src="./app.js" type="module"></script>
+  </body>
+</html>
