@@ -278,7 +278,7 @@ function stopCamera() {
   els.recordBtn.classList.remove("recording");
   els.recordBtn.querySelector("span:last-child").textContent = "Track";
   setStatus(els.cameraStatus, "Camera idle", "muted");
-  state.autoCalibration = null;
+  clearCalibration();
   renderStats();
   drawOverlay();
 }
@@ -429,6 +429,16 @@ function finishCalibration(statusText = "Calibrated") {
   setStatus(els.calibrationStatus, statusText, "good");
   drawOverlay();
   drawCourtMap();
+}
+
+function clearCalibration() {
+  state.calibrationMode = false;
+  state.calibrationPoints = [];
+  state.homography = null;
+  state.inverseHomography = null;
+  state.autoCalibration = null;
+  els.calibrationGuide.hidden = true;
+  setStatus(els.calibrationStatus, "Needs calibration", "warn");
 }
 
 function detectCourtCalibrationFromFrame() {
@@ -696,6 +706,10 @@ function scoreCourtCandidate(points, lines, width, height) {
 
 function resetSession() {
   closeReplay();
+  clearCalibration();
+  state.isTracking = false;
+  els.recordBtn.classList.remove("recording");
+  els.recordBtn.querySelector("span:last-child").textContent = "Track";
   state.tracks = [];
   state.courtTrail = [];
   state.shots = [];
