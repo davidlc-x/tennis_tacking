@@ -1,4 +1,4 @@
-const CACHE_NAME = "courtspeed-v6";
+const CACHE_NAME = "courtspeed-v7";
 const ASSETS = [
   "./",
   "./index.html",

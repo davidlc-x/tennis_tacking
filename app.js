@@ -125,6 +125,8 @@ const els = {
   exportBtn: $("exportBtn"),
   courtMode: $("courtMode"),
   units: $("units"),
+  cameraFacing: $("cameraFacing"),
+  cameraFacingNote: $("cameraFacingNote"),
   detectorMode: $("detectorMode"),
   detectorStatus: $("detectorStatus"),
   sensitivity: $("sensitivity"),
@@ -158,6 +160,30 @@ function courtSize() {
 
 function preferredUnitLabel() {
   return els.units.value === "mph" ? "mph" : "km/h";
+}
+
+function cameraFacingMode() {
+  return els.cameraFacing?.value === "user" ? "user" : "environment";
+}
+
+function cameraFacingLabel() {
+  return cameraFacingMode() === "user" ? "Front camera" : "Rear camera";
+}
+
+function updateCameraFacingNote() {
+  if (cameraFacingMode() === "user") {
+    els.cameraFacingNote.textContent = "Lower quality; test only";
+    els.cameraFacingNote.className = "field-note warn";
+  } else {
+    els.cameraFacingNote.textContent = "Recommended for tracking";
+    els.cameraFacingNote.className = "field-note good";
+  }
+}
+
+async function restartCameraWithFacing() {
+  if (state.streamKind !== "camera" || !state.stream) return;
+  stopCamera();
+  await startCamera();
 }
 
 function convertSpeed(kmh) {
@@ -235,10 +261,11 @@ async function startCamera() {
   }
 
   try {
+    const facingMode = cameraFacingMode();
     const constraints = {
       audio: false,
       video: {
-        facingMode: { ideal: "environment" },
+        facingMode: { ideal: facingMode },
         width: { ideal: 1920 },
         height: { ideal: 1080 },
         frameRate: { ideal: 60, max: 60 },
@@ -248,7 +275,7 @@ async function startCamera() {
     state.streamKind = "camera";
     els.video.srcObject = state.stream;
     await els.video.play();
-    setStatus(els.cameraStatus, "Camera ready", "good");
+    setStatus(els.cameraStatus, `${cameraFacingLabel()} ready`, "good");
     els.startCameraBtn.querySelector("span:last-child").textContent = "Stop";
     els.recordBtn.disabled = false;
     els.autoCalibrateBtn.disabled = false;
@@ -288,7 +315,8 @@ function toggleTracking() {
   state.isTracking = !state.isTracking;
   els.recordBtn.classList.toggle("recording", state.isTracking);
   els.recordBtn.querySelector("span:last-child").textContent = state.isTracking ? "Pause" : "Track";
-  setStatus(els.cameraStatus, state.isTracking ? "Tracking" : "Camera ready", state.isTracking ? "good" : "good");
+  const readyLabel = state.streamKind === "simulation" ? "Virtual feed" : `${cameraFacingLabel()} ready`;
+  setStatus(els.cameraStatus, state.isTracking ? "Tracking" : readyLabel, "good");
 }
 
 async function startSimulation() {
@@ -2127,6 +2155,7 @@ function exportSession() {
     createdAt: new Date().toISOString(),
     units: preferredUnitLabel(),
     court: els.courtMode.value,
+    cameraFacing: state.streamKind === "camera" ? cameraFacingMode() : state.streamKind,
     calibrationPoints: state.calibrationPoints,
     stats: {
       peak: convertSpeed(state.stats.peak),
@@ -2383,6 +2412,10 @@ els.detectorMode.addEventListener("change", () => {
     void ensureBallModel();
   }
 });
+els.cameraFacing.addEventListener("change", () => {
+  updateCameraFacingNote();
+  void restartCameraWithFacing();
+});
 els.units.addEventListener("change", () => {
   renderStats();
   renderShotList();
@@ -2400,6 +2433,7 @@ if ("serviceWorker" in navigator) {
 }
 
 setAppHeight();
+updateCameraFacingNote();
 setDetectorStatus(window.ort ? "Model idle" : "Model unavailable", window.ort ? "muted" : "warn");
 renderStats();
 updateReplayButton();

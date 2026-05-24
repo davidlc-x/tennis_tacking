@@ -4,7 +4,7 @@ CourtSpeed is a phone-friendly web app for recording tennis from the back of the
 
 ## What it does
 
-- Opens the rear phone camera with `getUserMedia`.
+- Opens the rear or front phone camera with `getUserMedia`.
 - Lets you tap four visible court corners to build a court homography.
 - Can attempt automatic calibration from visible court sidelines and baselines.
 - Detects the ball with a local YOLOv8 ONNX model, with color/blob tracking as a fallback.
@@ -35,7 +35,9 @@ Camera access works on `localhost`. To test from an actual phone over Wi-Fi, ser
 
 ## Court setup
 
-Mount the phone behind one baseline with the full court visible. A higher fence mount improves the court projection and speed estimates. Tap the four court corners in this order:
+Mount the phone behind one baseline with the full court visible. A higher fence mount improves the court projection and speed estimates. The rear camera is still the recommended tracking lens because it usually gives better optics, frame rate, and wide-angle coverage. The app has a Camera lens selector if you want to test the front camera so the screen can face the court, but expect lower tracking quality on many phones.
+
+Tap the four court corners in this order:
 
 1. Near-left baseline corner
 2. Near-right baseline corner
@@ -43,6 +45,14 @@ Mount the phone behind one baseline with the full court visible. A higher fence 
 4. Far-left baseline corner
 
 Use doubles mode if you tap doubles corners; use singles mode if you tap singles corners.
+
+If real-court tracking struggles, try this setup before changing code:
+
+- Use the rear camera, 60 fps if your browser exposes it, and a stable mount behind the baseline.
+- Keep both sidelines, both baselines, and the net visible.
+- Place the phone high enough that the far baseline is not hidden by the net or players.
+- Use Hybrid model detection and keep Shot floor around 30-40 km/h to reject small jitter.
+- Use Manual calibration after Auto if the blue guide lines do not sit on the court lines.
 
 ## Auto calibration
 
